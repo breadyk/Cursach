@@ -1,15 +1,9 @@
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +15,7 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
-RGWebAdapter rg = new RGWebAdapter();
+AuthOptions ao = new AuthOptions();
 
 DBManager db = new DBManager();
 DBManager textdb = new DBManager();
@@ -33,16 +27,28 @@ app.MapGet("/current_user", [Authorize](HttpContext context) => {
     return Results.Ok(context.User.Identity.Name);
 });
 
-app.MapPost("/login", ([FromBody] Auth auth, HttpContext context) => {
-    rg.LogIn(auth.login, auth.password, context, db);
+app.MapPost("/login", async ([FromBody] Auth auth, HttpContext context) => {
+    bool result = await ao.LogIn(auth.login, auth.password, context, db);
+    if (!result){
+        return Results.Unauthorized();
+    }
+    return Results.Ok();
     });
-app.MapPost("/signup", (string login, string password) =>{
-    if (db.AddUser(login, password)) return Results.Ok("User "+login+" registered successfully!");
-    return Results.Problem("Failed to register user " + login); 
+app.MapPost("/signup", ([FromBody] Auth auth) =>{
+    if (db.AddUser(auth.login, auth.password)) return Results.Ok("User "+auth.login+" registered successfully!");
+    return Results.Problem("Failed to register user " + auth.login); 
 });
-app.MapPost("/update_Password", ([FromBody] Auth auth, HttpContext context) => {
-    if (db.UpdatePassword(auth.login, auth.password, auth.newPassword)) return Results.Ok("Password updated successfully!");
-    return Results.Problem("Failed to change password for " + auth.login); 
+app.MapPost("/update_password", ([FromBody] Auth auth, HttpContext context) => {
+    return ao.UpdatePassword(auth.login, auth.password, auth.newPassword, context, db).Result;
+});
+app.MapGet("/get_user_logs", (string login) =>{
+    var jsonResponse = db.GetUserLogs(login);
+    if (jsonResponse == null) return Results.Problem("Unable to get user logs");
+    return Results.Json(jsonResponse);
+});
+app.MapDelete("/delete_all_logs", () => {
+    db.EraseLogs();
+    Results.Ok();
 });
 
 const string DB_PATH = "/home/kursach/Документы/users.db";
@@ -57,62 +63,82 @@ if (!textdb.ConnectToDB(TEXT_DB_PATH)){
     return;
 }
 
-app.MapPost("/text_add", (string newtext) => {
-    if (textdb.AddText(newtext)) return Results.Ok($"Added new text: {newtext}");
+app.MapPost("/text_add", ([FromBody] Texts text) => {
+    if (textdb.AddText(text.newtext)){
+        db.AddLog(text.logLogin, "Added new text");
+        return Results.Ok($"Added new text: {text.newtext}");
+    }
     else return Results.Problem("Something went wrong");
 });
 
-app.MapPatch("/text_edit", (string newtext, int textID) => {
-    if(textdb.EditTextNewRC(newtext, textID)) return Results.Ok($"Edited text: {textID}");
+app.MapPatch("/text_edit", ([FromBody] Texts text) => {
+    if(textdb.EditTextNewRC(text.newtext, text.textID)){
+        db.AddLog(text.logLogin, $"Edited Text {text.textID}");
+        return Results.Ok($"Edited text: {text.textID}");
+    } 
     else return Results.Problem("Something went wrong");
 });
 
-app.MapDelete("/text_delete", (int textID) => {
-    if(textdb.deleteText(textID)) return Results.Ok($"Deleted text {textID}.");
+app.MapDelete("/text_delete", (int textID, string login) => {
+    if(textdb.deleteText(textID)){
+        db.AddLog(login, $"Deleted text {textID}");
+        return Results.Ok($"Deleted text {textID}.");
+    }
     else return Results.Problem("Something went wrong");
 });
 
-app.MapGet("/text_get_single", (int textID) => {
+app.MapGet("/text_get_single", (string login, int textID) => {
     string text = textdb.getSingle(textID);
     if(text != null)
     {
-        return Results.Ok($"Text: {text}");
+        db.AddLog(login, "Got text");
+        return Results.Json(text);
     }
     else return Results.Problem("Something went wrong");
 });
-app.MapGet("/text_get_all", () =>{
+app.MapGet("/text_get_all", (string login) => {
     List<string> textList = textdb.getAllTexts();
-    if(textList != null){
-        string textString = "";
+    if (textList != null)
+    {
+        var jsonResponse = new Dictionary<string, string>();
         int counter = 1;
-        foreach(string text in textList){
-            textString+= $"\n{counter}: {text}";
+
+        foreach (string text in textList)
+        {
+            jsonResponse.Add($"text{counter}", text);
             counter++;
         }
-        return Results.Ok(textString);
+        db.AddLog(login, "Got all texts");
+        return Results.Json(jsonResponse);
     }
-    else return Results.Problem("Something went wrong");
+    else
+    {
+        var errorResponse = new { error = "Something went wrong" };
+        return Results.Json(errorResponse, statusCode: 500);
+    }
 });
-app.MapPost("/text_encrypt", (int textID) => {
+app.MapPost("/text_encrypt", ([FromBody] Texts texts) => {
     if(textdb.getSingleWithRC != null){
-        var result = textdb.getSingleWithRC(textID);
+        var result = textdb.getSingleWithRC(texts.textID);
         string text = result.Value.Text;
         int rows = result.Value.Rows;
         int columns = result.Value.Columns;
         string enc = Codec.Encrypt(text, rows, columns);
-        textdb.EditTextOldRC(enc, textID);
+        textdb.EditTextOldRC(enc, texts.textID);
+        db.AddLog(texts.logLogin, $"Encrypter text {texts.textID}");
         return Results.Ok($"Encrypted text {enc}");
     }
     else return Results.Problem("Something went wrong");
 });
-app.MapPost("/text_decrypt", (int textID) => {
+app.MapPost("/text_decrypt", ([FromBody] Texts texts) => {
     if(textdb.getSingleWithRC != null){
-        var result = textdb.getSingleWithRC(textID);
+        var result = textdb.getSingleWithRC(texts.textID);
         string text = result.Value.Text;
         int rows = result.Value.Rows;
         int columns = result.Value.Columns;
         string dec = Codec.Decrypt(text, rows, columns);
-        textdb.EditTextOldRC(dec, textID);
+        textdb.EditTextOldRC(dec, texts.textID);
+        db.AddLog(texts.logLogin, $"Decrypted text {texts.textID}");
         return Results.Ok($"Decrypted text {dec}");
     }
     else return Results.Problem("Something went wrong");
@@ -131,22 +157,16 @@ struct Auth{
 }
 struct Texts{
     public int textID {get; set;}
-    public string newText {get;set;}
-}
-public struct RGResult{
-    public RGResult(int rv){
-        random_value = rv;
-    }
-    public int random_value {get; set;}
+    public string newtext {get;set;}
+
+    public string logLogin {get; set;}
 }
 
+public class AuthOptions{
 
-public class RGWebAdapter{
-    private RandomGenerator rg = new RandomGenerator();
-
-    public async Task<IResult> LogIn(string login, string password, HttpContext context, DBManager db){
+    public async Task<bool> LogIn(string login, string password, HttpContext context, DBManager db){
         if (!db.CheckUser(login, password)){
-            return Results.Unauthorized();
+            return false;
         }
 
         var claims = new List<Claim> { new Claim(ClaimTypes.Name, login) };
@@ -155,67 +175,24 @@ public class RGWebAdapter{
         await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(claimsIdentity));
 
-        return Results.Ok(/*response*/);
-    }
-    public IResult GetValue(){ 
-        return Results.Ok(rg.GetValue());
-    }
-    public IResult GetValue(int lb, int ub){
-        if (lb>=ub){
-            return Results.Conflict("Low border can't be equal or bigger than up border");
-        }
-        return Results.Ok(new RGResult(rg.GetValue(lb, ub)));
-    }
-    
-    public IResult UpdateBorder(int lb, int ub){
-        if (rg.UpdateBorder(lb, ub)){
-            return Results.Ok("Borders are updated");
-        }
-        return Results.Conflict("Cannot upgrade borders with such values");
-    }
-}
-
-public class RandomGenerator
-{
-    private int low_border;
-    private int up_border;
-    private Random random;
-
-    public RandomGenerator(int lb = 0, int ub = 10)
-    {
-        low_border = lb;
-        up_border = ub;
-        random = new Random();
-    }
-
-    public int GetValue()
-    {
-        return random.Next(low_border, up_border);
-    }
-
-    public int GetValue(int lb, int ub)
-    {
-        return random.Next(lb, ub);
-    }
-
-    public bool UpdateBorder(int lb, int ub)
-    {
-        if (ub <= lb){return false;}
-        low_border = lb;
-        up_border = ub;
         return true;
+    }
+    public async Task<IResult> UpdatePassword(string login, string password, string newPassword, HttpContext context, DBManager db){
+        if (db.UpdatePassword(login, password, newPassword)){
+            var claims = new List<Claim> { new Claim(ClaimTypes.Name, login) };
+            var claimsIdentity = new ClaimsIdentity(claims, "Cookies");
+
+            await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+                new ClaimsPrincipal(claimsIdentity));
+
+            return Results.Ok("Password updated successfully!");
+        }
+        return Results.BadRequest($"Failed to change password for {login}");
     }
 }
 
 public class Codec
 {
-    /// <summary>
-    /// Шифрует текст методом табличной перестановки.
-    /// </summary>
-    /// <param name="input">Входной текст для шифрования.</param>
-    /// <param name="rows">Количество строк в таблице.</param>
-    /// <param name="columns">Количество столбцов в таблице.</param>
-    /// <returns>Зашифрованный текст.</returns>
     public static string Encrypt(string input, int rows, int columns)
     {
         if (string.IsNullOrEmpty(input))
@@ -224,7 +201,6 @@ public class Codec
         if (rows * columns < input.Length)
             throw new ArgumentException("Table size is too small for the input text.");
 
-        // Заполняем таблицу по строкам
         char[,] table = new char[rows, columns];
         int index = 0;
 
@@ -232,11 +208,10 @@ public class Codec
         {
             for (int j = 0; j < columns; j++)
             {
-                table[i, j] = index < input.Length ? input[index++] : ' '; // Заполняем пробелами, если текст короче
+                table[i, j] = index < input.Length ? input[index++] : ' ';
             }
         }
 
-        // Читаем таблицу по столбцам справа налево
         StringBuilder encryptedText = new StringBuilder();
 
         for (int j = columns - 1; j >= 0; j--)
@@ -250,13 +225,6 @@ public class Codec
         return encryptedText.ToString();
     }
 
-    /// <summary>
-    /// Расшифровывает текст, зашифрованный методом табличной перестановки.
-    /// </summary>
-    /// <param name="input">Зашифрованный текст.</param>
-    /// <param name="rows">Количество строк в таблице.</param>
-    /// <param name="columns">Количество столбцов в таблице.</param>
-    /// <returns>Расшифрованный текст.</returns>
     public static string Decrypt(string input, int rows, int columns)
     {
         if (string.IsNullOrEmpty(input))
@@ -265,7 +233,6 @@ public class Codec
         if (rows * columns < input.Length)
             throw new ArgumentException("Table size is too small for the input text.");
 
-        // Заполняем таблицу по столбцам справа налево
         char[,] table = new char[rows, columns];
         int index = 0;
 
@@ -277,7 +244,6 @@ public class Codec
             }
         }
 
-        // Читаем таблицу по строкам
         StringBuilder decryptedText = new StringBuilder();
 
         for (int i = 0; i < rows; i++)
@@ -288,8 +254,6 @@ public class Codec
             }
         }
 
-        return decryptedText.ToString().TrimEnd(); // Убираем лишние пробелы
+        return decryptedText.ToString().TrimEnd();
     }
 }
-
-

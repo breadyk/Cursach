@@ -38,9 +38,44 @@ public class DBManager{
         Console.WriteLine("Disconnected.");
         
     }
+    public bool AddLog(string login, string action){
+        string REQUEST = $"INSERT INTO logs (login, action) VALUES ('{login}', '{action}')";
+        return validateResponse(REQUEST);
+    }
+    public bool EraseLogs(){
+        return validateResponse("DELETE FROM logs");
+    }
+    public Dictionary<string, string> GetUserLogs(string login)
+    {
+        string REQUEST = $"SELECT ID, Action FROM logs WHERE Login = '{login}'";
+        //List<string> logs = new List<string>();
+        var logs2 = new Dictionary<string, string>();
+        using (var command = new SqliteCommand(REQUEST, connection))
+        {
+            try
+            {
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int id = reader.GetInt32(0);
+                        string action = reader.GetString(1);
+                        //logs.Add($"{id}: {action}");
+                        logs2.Add($"{id}", action);
+                    }
+                }
+            }
+            catch (Exception exp)
+            {
+                Console.WriteLine(exp.Message);
+            }
+        }
+        
+        return logs2;
+    }
     public bool UpdatePassword(string login, string password, string newPassword){
         if(CheckUser(login, password)){
-            string REQUEST = $"INSERT INTO users (Password) VALUES ('{HashPassword(newPassword)}') WHERE Login='{login}'";
+            string REQUEST = $"UPDATE users SET Password = '{HashPassword(newPassword)}' WHERE Login = '{login}'";
             return validateResponse(REQUEST);
         }
         return false;
@@ -71,6 +106,7 @@ public class DBManager{
             return false;
         }
     } 
+
     public bool AddText(string newText){
         (int rows, int columns) = TableDimensionCalculator.DetermineDimensions(newText.Length);
         string REQUEST = $"INSERT into Texts (Text, Rows, Columns) VALUES ('{newText}', {rows}, {columns})";
@@ -138,14 +174,14 @@ public class DBManager{
             var reader = command.ExecuteReader();
 
             while (reader.Read()) {
-                texts.Add(reader["Text"].ToString()); // Добавляем текст в список
+                texts.Add(reader["Text"].ToString()); 
             }
 
             return texts;
         }
         catch (Exception exp) {
             Console.WriteLine(exp.Message);
-            return new List<string>(); // В случае ошибки возвращаем пустой список
+            return new List<string>();
         }
     }
 
@@ -173,10 +209,8 @@ public class TableDimensionCalculator
         if (inputLength <= 0)
             throw new ArgumentException("Input length must be greater than zero.");
 
-        // Рассчитываем количество столбцов как ближайшее к квадратному корню
         int columns = (int)Math.Ceiling(Math.Sqrt(inputLength));
 
-        // Рассчитываем минимальное количество строк, чтобы вместить весь текст
         int rows = (int)Math.Ceiling((double)inputLength / columns);
 
         return (rows, columns);
