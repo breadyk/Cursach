@@ -354,7 +354,7 @@ void Main()
         while(true){
             Console.WriteLine("\nSelect action:");
             Console.WriteLine("1) Add new text to DB;\n2) Edit text in DB;\n3) Delete text from DB;");
-            Console.Write("4) Get single text from BD;\n5) Get ALL texts from BD;\n");
+            Console.Write("4) Get single text from DB;\n5) Get ALL texts from DB;\n");
             Console.Write("6) Encrypt text in DB;\n7) Decrypt text in DB;\n");
             Console.Write("8) Get your logs;\n9) Erase EVERYONE'S logs;\n");
             Console.Write("10) Update your password;\n\n11) Exit\n");
@@ -373,8 +373,6 @@ void Main()
                 case 1:{
                     Console.WriteLine("Enter text to add:");
                     AddText(Console.ReadLine(), login);
-                    Console.WriteLine("\nPress any key to continue...");
-                    Console.ReadLine();
                     break;  
                 }
                 case 2: {

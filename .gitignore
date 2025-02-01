@@ -2,3 +2,5 @@
 /progs/serverside/obj
 /progs/clientside/bin
 /progs/clientside/obj
+/progs/UnitTests/bin
+/progs/UnitTests/obj

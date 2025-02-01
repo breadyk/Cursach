@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "serverside", "serverside\se
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "clientside", "clientside\clientside.csproj", "{ACF88F50-787D-45D6-A1FD-9DC8D98B4A76}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "UnitTests\UnitTests.csproj", "{00534C19-FB50-4E36-82A2-BD692B5F1FA0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{ACF88F50-787D-45D6-A1FD-9DC8D98B4A76}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ACF88F50-787D-45D6-A1FD-9DC8D98B4A76}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ACF88F50-787D-45D6-A1FD-9DC8D98B4A76}.Release|Any CPU.Build.0 = Release|Any CPU
+		{00534C19-FB50-4E36-82A2-BD692B5F1FA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{00534C19-FB50-4E36-82A2-BD692B5F1FA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{00534C19-FB50-4E36-82A2-BD692B5F1FA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{00534C19-FB50-4E36-82A2-BD692B5F1FA0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -126,7 +126,7 @@ app.MapPost("/text_encrypt", ([FromBody] Texts texts) => {
         string enc = Codec.Encrypt(text, rows, columns);
         textdb.EditTextOldRC(enc, texts.textID);
         db.AddLog(texts.logLogin, $"Encrypter text {texts.textID}");
-        return Results.Ok($"Encrypted text {enc}");
+        return Results.Ok($"Encrypted text: {enc}");
     }
     else return Results.Problem("Something went wrong");
 });
@@ -138,7 +138,7 @@ app.MapPost("/text_decrypt", ([FromBody] Texts texts) => {
         int columns = result.Value.Columns;
         string dec = Codec.Decrypt(text, rows, columns);
         textdb.EditTextOldRC(dec, texts.textID);
-        db.AddLog(texts.logLogin, $"Decrypted text {texts.textID}");
+        db.AddLog(texts.logLogin, $"Decrypted text: {texts.textID}");
         return Results.Ok($"Decrypted text {dec}");
     }
     else return Results.Problem("Something went wrong");
